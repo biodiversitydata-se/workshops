@@ -1,2 +1,2 @@
-# workshops
-online material for various workshops
+# Training resources
+online material for SBDI courses
