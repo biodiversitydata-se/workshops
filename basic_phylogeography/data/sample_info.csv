@@ -1,0 +1,11 @@
+Code,Location,Country,Latitude,Longitude,Species,Sample size,Ecology
+CR_V1 ,Bac Lieu,Vietnam,9.265834,105.958949,C. rotundicauda,4,Mangrove
+CR_T3 ,Bang Pu,Thailand,6.9,101.3,C. rotundicauda,10,Mangrove
+CR_T5 ,Phuket,Thailand,7.85,98.416667,C. rotundicauda,8,Mangrove
+TG_T2  ,Ranong,Thailand,9.7892,98.5158,T. gigas,6,Coastal
+TG_V1 ,Bac Lieu,Vietnam,9.265834,105.958949,T. gigas,2,Coastal
+TT_K1 ,Putoushan,China,28.132872,121.1176,T. tridendatus,4,Coastal
+TT_K2 ,Sinjahmen,China,29.073831,121.749755,T. tridendatus,6,Coastal
+LP_M2 ,Rio Lagartos,Mexico,21.603627,-88.145593,L. polyphemus,6,Coastal
+LP_F1,Florida,USA,28.864783,-80.831358,L. polyphemus,6,Coastal
+LP_W ,Woods Hole,USA,41.516667,-70.7,L. polyphemus,7,Coastal
