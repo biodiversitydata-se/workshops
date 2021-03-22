@@ -1,0 +1,397 @@
+---
+title: "MAV105 Session 4 - Bioinformatics in R"
+date: "2021"
+output:
+  rmarkdown::html_document:
+    toc: true # table of content true
+    toc_depth: 3  # upto three depths of headings (specified by #, ## and ###)
+    number_sections: true  ## if you want number sections at each table header
+    toc_float: true
+    theme: united  # many options for theme, this one is my favourite.
+    highlight: tango  # specifies the syntax highlighting style
+    fig_height: 10
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+# Making maps
+
+**If you haven't already, now is a good time to start a new R project and a clean working directory where you can put all your files**
+
+Now you can load the packages
+```{r, message=FALSE}
+library(swirl)
+library(msa)
+library(ape)
+library(phangorn)
+library(seqinr)
+library(tidyverse)
+library(grDevices)
+library(maps)
+```
+
+*If you get an error when trying to load a package it's likely that the installation failed so try and install the package again. If it asks you to install an additional package install that too. If it still doesn't work and you can't figure out why, contact one of the teachers and ask for help.*
+
+
+Go to CANVAS and download the folder called `data` and put it in your working directory.
+Inside your data folder you should have two files, one called *MAV105_HSCrabs_CO1.fas* which contains 58 sequences from horseshoe crabs from 10 different locations. There is also a file called *sample_info.csv* with a table of information on all the sampling locations, listing their identification code, location, country and latitude and longitude. We will start with having a look at the *sample_info.csv* file. You can open it in excel or a text editor to have look ate the table before we load it into R.
+
+Windows default text editor is *Notepad*, or *Anteckningar* in Swedish
+Mac default text editor is *TextEdit*, or *Textredigerare* in Swedish (I think)
+
+
+When working with samples from different areas it can be very helpful to plot it on a map to get a better understanding of what you are working with.
+To do this first load the *sample_info.csv* file in to R
+
+```{r}
+info_df <- read.csv("data/sample_info.csv", stringsAsFactors=TRUE)
+info_df
+```
+
+As you can see R easily reads in the file as a table and uses the first row as column names.
+This time it is what we want, but this is not always the case in which case you can use the argument `col.names = FALSE`
+If we want to access just one column there are many ways to do that but my favourite is to use the `$` symbol, why don't you try it out?
+
+`info_df$Species`
+
+Let's create some vectors that we can use for plotting
+
+```{r}
+lon <- info_df$Longitude
+lat <- info_df$Latitude
+sp <- info_df$Species
+code <- info_df$Code
+```
+
+Now it's time to make a map, in order to keep things simple we can simply use the `map()` function and plot a world map.
+But first we actually need to create another colour vector as the standard `palette` only has 8 colours and we have 10 different codes.
+We can use the `rainbow()` palette instead which comes with the package `grDevices`
+```{r, eval=FALSE}
+palette(rainbow(10)) 
+# map the world
+map("world", fill=TRUE, col="lightgray", bg="white")
+# add our points
+points(x = lon, y = lat, col = sp, pch=16, cex = 3, )
+#and add a legend
+legend("left", legend = levels(sp), col = palette(), pch = 16, cex = 1.2)
+?map
+
+```
+
+![](other/map1.png)
+
+Now lets make the same map but also add the labels to the map.
+This can be a little cumbersome because our points are very close together and we don't want our labels to overlap.
+
+```{r, eval=FALSE}
+# map the world
+map("world", fill=TRUE, col="lightgray", bg="white", )
+# add our points
+points(x = lon, y = lat, col = sp, pch=16, cex = 3, )
+#and add a legend
+legend("left", legend = levels(sp), col = palette(), pch = 16, cex = 1.2)
+# make vectors of which labels you want placed where
+right <- c(2,6,8,9,10)
+left <- c(3)
+left_up <- c(4)
+right_up <- c(1,7)
+#now add the labels
+text(x = lon[right], y = lat[right], labels = code[right], adj = c(-0.3,1.5), font = 2, cex = 1.3, col = "red") 
+text(x = lon[left], y = lat[left], labels = code[left], adj = c(1,1.5), font = 2, cex = 1.3, col = "red")
+text(x = lon[right_up], y = lat[right_up], labels = code[right_up], adj = c(-0.3,0), font = 2, cex = 1.3, col = "red") 
+text(x = lon[left_up], y = lat[left_up], labels = code[left_up], adj = c(1,0), font = 2, cex = 1.3, col = "red") 
+```
+![](other/map2.png)
+
+## Using ggplot
+
+A very popular way of plotting is using something called ggplot which is part of the Tidyverse, we wont go into any detail, but feel free to try it out
+
+Extract the coordinates from all occurrence points and turn them into a spatial points object and load a world map using borders (gglpot2)
+```{r}
+map_world <- borders(database = "world", colour = "gray50", fill = "lightgray")
+```
+
+First we just call the function ggplot(), then tell it to plot our map_world object we created above, then add the data (info_df) using the geom_point() function, and finally we add a legend using the theme() command.
+
+```{r, fig.height=8, fig.width=11}
+ggplot(data = info_df[-1,],  # Specify the data for geom_point()
+             aes(x = Longitude,  # Specify the x axis as longitude
+                 y = Latitude,
+                 label = Code )) +
+  map_world +
+  geom_point(aes(colour = Species),  # Colour the points based on species name
+             alpha = 0.8,  # Set point opacity to 80%
+             size = 6) + # set size
+  geom_text(fontface = "bold",position=position_jitter(width=3,height=3))+
+  theme(legend.position = "top")
+```
+
+# Alignment and species diversity
+
+Fasta files are text files used for nucleic acids and aminoacids. Sequences in Fasta start with a `>` symbol followed by a description (i.e., header). The next line contains the sequence itself. The following is an example of a DNA fasta file
+
+To be able to compare these sequences we first need to align them.
+
+![](other/mar105-bioinformatics-manual-2020.png)
+
+Once the sequences have been aligned we can look for mutations, conserved regions, variable regions, among other things. We can also use these sequences for taxonomic classification. Particularly, the cytochrome c gene is useful when looking for the identity of metazoans.
+
+Go to your `data`  folder and open *MAV105_HSCrabs_CO1.fas* with a text editor (Do not try and use excel for this file)
+
+
+> ***Question**
+>
+> 1. Can you see where one sequence ends and another starts? 
+> 2. In this case each sequence is from a different individual, what is the first individual called?
+> 3. Each individual has identifier code following this pattern *speciesID_locationID_SpecimentID*. Open the .csv to check species, location and country of the first and last individual in the fasta file.
+
+
+## Multiple sequence alignment
+
+Now lets start working with the sequences!
+Time to load the fasta file into R.
+This code assumes that inside your working directory there is a folder named `data` and inside that folder we have all our files with unchanged names. You can choose to organise it differently but then you will have to adjust the paths which tells R where to look (eg "data/data/MAV105_HSCrabs_CO1.fas"). 
+
+
+```{r}
+# this simply saves the path to the file as a object
+my_sequence_file <- "data/MAV105_HSCrabs_CO1.fas" 
+#this reads in the fasta file using the assigned path above
+my_sequences <- readDNAStringSet(my_sequence_file) 
+#this prints it to your console
+my_sequences
+```
+
+Now it is time for the alignment.
+We will use a package called `msa` which allows you to align multiple sequences with many different alignment and substitution algorithms. For now we won't go into much detail here and simply use the default alignment and substitution matrix.
+
+```{r, cache=TRUE}
+#Does the alignment
+my_first_alignment <- msa(my_sequences)
+# prints the alignment to the console
+my_first_alignment
+```
+
+The default printing function shortens the alignment for the sake of compacting the output. The `print()` function provided by the `msa` package provides some ways for customizing the output, such as, showing the entire alignment split over multiple blocks of sub-sequences:
+
+```{r, eval=FALSE}
+print(my_first_alignment, show="complete")
+```
+
+A lot of times it's easier to look at alignments if you colour code the different bases.
+We can convert your alignment to a “phyDat” object for use in phangorn, the major package for tree building in R.
+
+```{r}
+dna_phy <- msaConvert(my_first_alignment, "phangorn::phyDat")
+image(dna_phy)
+```
+
+Each individual is here plotted on a row and the sequences are colour coded.
+As you can see are the sequences of different lengths, and they are not all aligned from the beginning of the first base but according to the best "match".
+
+> **Question**
+>
+> 4. What do the different colours mean?
+> 5. There is one sequence which is quite short, but aligns pretty well, which one is that?
+
+
+## Species diversity
+
+But how much much difference is there really?
+If we look `dna_phy` we can see that there are *"58 sequences with 599 character and 210 different site patterns*.
+This means that in the overall alignments there are 210 bases where the sequences differ.
+
+We can investigate if our species have different levels of diversity like this
+
+```{r}
+# first we extract the individuals names from or phyDat object
+name <- colnames(as.data.frame(dna_phy))
+# Then we extract only the species code, which is the first two characters
+species_code <- substr(name, 1, 2)
+
+# Using this we can subset the phyDat file by species
+TT <- subset(dna_phy, which(species_code == "TT"))
+CR <- subset(dna_phy, which(species_code == "CR"))
+TG <- subset(dna_phy, which(species_code == "TG"))
+LP <- subset(dna_phy, which(species_code == "LP"))
+
+# and finally we recalculate the number of substitutions for each species
+
+TT_phy <- phyDat(TT, type = "DNA", levels = NULL)
+CR_phy <- phyDat(CR, type = "DNA", levels = NULL)
+TG_phy <- phyDat(TG, type = "DNA", levels = NULL)
+LP_phy <- phyDat(LP, type = "DNA", levels = NULL)
+```
+
+Now look at the objects that you just created by typing `TT_phy` etc.
+
+> **Question**
+>
+> 6. How many different site patterns do the different species have?
+> 7. Which species has the most diversity?
+
+# Phylogenetic trees
+
+Phylogenetic trees are depictions of the estimated evolutionary relationships between taxa - these can be organisms, species, strains or even genes. The taxa are on the **tips** of the trees, and the internal **nodes** of the tree represent their hypothetical ancestors. Nodes and taxa are connected by **branches/edges**. Groups of taxa that share a unique common ancestor are considered a **clade**.
+
+In a rooted phylogenetic tree, each node with descendants represents the inferred *most recent common ancestor* of those descendants, and the edge lengths in some trees may be interpreted as time estimates.
+
+Unrooted trees illustrate only the relatedness of the leaf nodes and do not require the ancestral root to be known or inferred.
+
+![](other/tree.jpg)
+
+## Compute pairwise distances
+
+Phylogenetic trees can be modelled from sequence data using a variety of approaches. Here, we will begin with a ‘neighbour joining’ algorithm, which sequentially joins taxa based on their sequence similarity. We have to begin the process by calculating the pairwise ‘distance’ among all of the sequences. Reducing sequence alignments into a matrix of pairwise distances allows for the rapid estimation of phylogenetic trees (at the cost of the additional information those sequences contain). 
+
+A distance matrix describes the *differences* between each pair of sequences, often ranging from 0-1, with 1 being the most different.
+
+```{r}
+dna_dist <- dist.ml(dna_phy)
+```
+
+> **Question**
+>
+> 8. which two pairs of sequences have the largest distance, aka difference?
+
+## Building and plotting phylogenetic trees
+
+Once you have a distance matrix we can construct and plot a neighbour joining tree from the distance matrix using the function `NJ()` 
+
+```{r}
+#make tree
+my_NJ  <- NJ(dna_dist)
+#plot tree
+plot.phylo(my_NJ, main = "My tree")
+```
+
+Great we have our first tree!
+
+The tree can still be a little hard to read so why don't we try some different ways of plotting
+Lets investigate our tree object `my_NJ`
+
+```{r}
+my_NJ
+```
+
+This give us some basic info about our tree, like how many nodes and tips there are, if its rooted or not and lastly if it includes branch lengths (also called edge lengths).
+A branch length is a number associated with each branch and may represent time or it may represent a measure of expected genetic distance, in our case it is the genetic distance.
+You can take a look at branch length by typing `my_NJ$edge.length` which will show you a numeric vector of the lengths of the branches.
+We can also plot these values on the tree, but before we do that let's round the values to only use 2 decimals
+
+```{r}
+annot <- round(my_NJ$edge.length,2)
+annot
+```
+
+Now we can plot the tree again and add the branch lengths
+
+```{r}
+# plot tree
+plot.phylo(my_NJ, main = "My tree")
+# add all branch length that are abov 0
+edgelabels(annot[annot>0], which(annot>0), frame="n", col = "red")
+# add scale of the branch lengths
+add.scale.bar(0.1,0, lcol = "red")
+```
+
+> **Question**
+>
+> 9. Which two individuals have the largest evolutionary distance between them?
+> 10. How large is this distance?
+
+If we are not interested in the evolutionary distance between the sequences and only want to see the topology (branching order) of the tree, we can choose to look at our tree without using branch lengths like this
+
+```{r}
+plot.phylo(my_NJ, main = "My tree without branch length", use.edge.length = FALSE)
+```
+
+Now this is a bit easier to read as the topology became more clear, but we do loose a lot of information when we don't include branch length.
+
+Let's plot a couple of more trees
+
+```{r}
+layout(1)
+# This only tells R that we want to make 6 plots in 3 rows and 2 columns
+layout(matrix(1:6, 3, 2))
+
+plot.phylo(my_NJ, main = "With branch lengths")
+plot.phylo(my_NJ, type = "c")
+plot.phylo(my_NJ, type = "u")
+plot.phylo(my_NJ, use.edge.length = FALSE, main = "Without branch lengths")
+plot.phylo(my_NJ, type = "c", use.edge.length = FALSE)
+plot.phylo(my_NJ, type = "u", use.edge.length = FALSE)
+
+# this tells R that now we only want to plot on thing at the time again
+layout(1)
+```
+
+OK now let's add a bit of colour to make our tree easier to understand
+If we look inside our tree object we can find the our individual names under `my_NJ$tip.label` and we can use that to extract location labels to use for colouring in the graph like this.
+
+```{r}
+#splits names by "_" and makes it into a data frame
+ID_df <- t(data.frame(strsplit(my_NJ$tip.label, split="_")))
+# takes the first column and makes it into a vector of colour
+species_col <- rainbow(10)[as.factor(ID_df[,1])]
+#takes the second column and makes into a vector of colours
+location_col <- rainbow(10)[as.factor(ID_df[,2])]
+```
+
+now we can choose to plot the tree according to the species
+
+```{r}
+plot.phylo(my_NJ, main = "My tree by species",
+           tip.col = species_col)
+```
+
+or according to location
+
+```{r}
+plot.phylo(my_NJ, main = "My tree by location",
+           tip.col = location_col)
+```
+
+> **Question**
+>
+> 11. Try some different plotting options and decide on your favourite tree which you think best shows the relationship between the different individuals and save it.
+
+```
+# Step 1: Call the png command to start the plot
+png(file = "my_best_plot.png",   # The directory you want to save the file in
+    width = 400, # The width of the plot in inches
+    height = 800) # The height of the plot in inches
+
+# Step 2: Create the plot with R code
+plot.phylo()
+
+# Step 3: Run dev.off() to create the file!
+dev.off()
+```
+## Exporting Trees
+
+Finally, unless you’re just analyzing relationships among a very limited number of taxa, the system viewer in R is probably going to be insufficient for viewing and saving your tree. The function write.tree() allows you to export the output of your analyses in Newick format, useful for further tinkering in programs such as FigTree.
+
+```{r}
+write.tree(my_NJ, file="my_tree.tre")
+```
+
+
+# Discussion questions
+
+Discuss the following questions in groups and post your answers on Canvas.
+
+> 12. You calculate the sequence variation within each species. Which species had the highest and lowest diversity. If you look into the ecology of the four species (explained in the introduction section of Vestbo et al paper), can you find an explanation of the patterns you observed?
+> 13. Plot the geographical positions of all branches of the phylogenetic tree on the map (you can do this manually). Do you see any genetic breaks, i.e. geographical areas that are genetically very distant?
+> 14. What is the average branch length dividing the 2 populations of Carcinoscorpius rotundicauda? If you assume a mutation rate of 18%, when did these 2 populations separate, and which geological event could have caused this separation?
+
+
+![](image/friday.jpg)
